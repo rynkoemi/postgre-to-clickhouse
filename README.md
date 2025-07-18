@@ -82,46 +82,41 @@ INSERT INTO users (username, account_type) VALUES
 
 Kirim konfigurasi connector ke Kafka Connect REST API:
 
-```bash
-curl -X POST http://localhost:8083/connectors \
-  -H "Content-Type: application/json" \
-  -d @debezium.json
-```
-
-Contoh isi file `debezium.json`:
-
 ```json
-{
-  "name": "shop-connector",
-  "config": {
-    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
-    "plugin.name": "pgoutput",
-    "database.hostname": "postgres",
-    "database.port": "5432",
-    "database.user": "postgres",
-    "database.password": "postgres",
-    "database.dbname": "postgres",
-    "database.server.name": "shop",
-    "table.include.list": "public.users",
-    "database.history.kafka.bootstrap.servers": "kafka:9092",
-    "database.history.kafka.topic": "schema-changes.shop",
-    "tasks.max": "1",
-    "snapshot.mode": "initial",
-    "topic.prefix": "shop",
-    "topic.creation.enable": "true",
-    "topic.creation.default.partitions": "1",
-    "topic.creation.default.replication.factor": "1",
-    "topic.creation.default.cleanup.policy": "delete",
-    "topic.creation.default.retention.ms": "604800000",
-    "database.history.skip.unparseable.ddl": "true",
-    "value.converter": "io.confluent.connect.avro.AvroConverter",
-    "key.converter": "io.confluent.connect.avro.AvroConverter",
-    "value.converter.schema.registry.url": "http://schema-registry:8081",
-    "key.converter.schema.registry.url": "http://schema-registry:8081",
-    "transforms": "unwrap",
-    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState"
-  }
-}
+curl --location --request POST 'http://localhost:8083/connectors' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "name": "shop-connector",
+    "config": {
+        "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+        "database.dbname": "postgres",
+        "database.history.kafka.bootstrap.servers": "kafka:9092",
+        "database.history.kafka.topic": "schema-changes.shop",
+        "database.hostname": "postgres",
+        "database.password": "postgres",
+        "database.port": "5432",
+        "database.server.name": "shop",
+        "database.user": "postgres",
+        "name": "shop-connector",
+        "plugin.name": "pgoutput",
+        "table.include.list": "public.users",
+        "tasks.max": "1",
+        "topic.creation.default.cleanup.policy": "delete",
+        "topic.creation.default.partitions": "1",
+        "topic.creation.default.replication.factor": "1",
+        "topic.creation.default.retention.ms": "604800000",
+        "topic.creation.enable": "true",
+        "topic.prefix": "shop",
+        "database.history.skip.unparseable.ddl": "true",
+        "value.converter": "io.confluent.connect.avro.AvroConverter",
+        "key.converter": "io.confluent.connect.avro.AvroConverter",
+        "value.converter.schema.registry.url": "http://schema-registry:8081",
+        "key.converter.schema.registry.url": "http://schema-registry:8081",
+        "transforms": "unwrap",
+        "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+        "snapshot.mode": "initial"
+    }
+}'
 ```
 
 ---
@@ -140,12 +135,12 @@ CREATE TABLE shop.users
     account_type String,
     updated_at DateTime,
     created_at DateTime,
-    operation_type String,
     kafka_time Nullable(DateTime),
     kafka_offset UInt64
 )
 ENGINE = ReplacingMergeTree
-ORDER BY (user_id, updated_at);
+ORDER BY (user_id, updated_at)
+SETTINGS index_granularity = 8192;
 ```
 
 2. **Buat Kafka Engine Table (source streaming):**
@@ -159,33 +154,35 @@ CREATE TABLE kafka_shop.kafka__users
     username String,
     account_type String,
     updated_at UInt64,
-    created_at UInt64,
-    __op String
+    created_at UInt64
 )
 ENGINE = Kafka
 SETTINGS kafka_broker_list = 'broker:29092',
-         kafka_topic_list = 'shop.public.users',
-         kafka_group_name = 'clickhouse',
-         kafka_format = 'AvroConfluent',
-         format_avro_schema_registry_url = 'http://schema-registry:8081';
+kafka_topic_list = 'shop.public.users',
+kafka_group_name = 'clickhouse',
+kafka_format = 'AvroConfluent',
+format_avro_schema_registry_url='http://schema-registry:8081';
 ```
 
 3. **Buat materialized view untuk konsumsi data Kafka:**
 
 ```sql
-CREATE MATERIALIZED VIEW kafka_shop.consumer__users TO shop.users AS
+CREATE MATERIALIZED VIEW kafka_shop.consumer__users TO shop.users
+(
+    user_id UInt32,
+    username String,
+    account_type String,
+    updated_at DateTime,
+    created_at DateTime,
+    kafka_time Nullable(DateTime),
+    kafka_offset UInt64
+) AS
 SELECT
     user_id,
     username,
     account_type,
     toDateTime(updated_at / 1000000) AS updated_at,
     toDateTime(created_at / 1000000) AS created_at,
-    CASE __op
-        WHEN 'c' THEN 'create'
-        WHEN 'u' THEN 'update'
-        WHEN 'd' THEN 'delete'
-        ELSE 'unknown'
-    END AS operation_type,
     _timestamp AS kafka_time,
     _offset AS kafka_offset
 FROM kafka_shop.kafka__users;
@@ -217,13 +214,5 @@ SELECT * FROM shop.users;
 * `docker-compose.yml` mencakup semua environment variabel, port, dependencies antar service.
 * PostgreSQL sudah dikonfigurasi `wal_level = logical` untuk mendukung CDC.
 * Debezium memanfaatkan **Avro + Schema Registry** agar schema message fleksibel dan dapat divalidasi.
-
----
-
-## 🧠 Catatan
-
-* Kamu bisa menambahkan lebih banyak tabel PostgreSQL ke CDC hanya dengan menambahkan ke `table.include.list` di config Debezium.
-* Untuk performa maksimal, pertimbangkan setting `flush_interval_ms` dan `batch_size` di Kafka & ClickHouse.
-* Bisa dikembangkan lebih lanjut untuk tujuan observability, notifikasi real-time, hingga pemrosesan stream analitik.
 
 ---
