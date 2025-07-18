@@ -31,8 +31,8 @@ Repositori ini berisi arsitektur lengkap untuk implementasi **Change Data Captur
 1. **Clone repository ini:**
 
 ```bash
-git clone https://github.com/rynkoemi/postgres-cdc-clickhouse.git
-cd postgres-cdc-clickhouse
+git clone  https://github.com/rynkoemi/postgre-to-clickhouse
+cd postgre-to-clickhouse
 ```
 
 2. **Build custom image Debezium (untuk dukungan Avro):**
