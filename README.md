@@ -31,7 +31,7 @@ Repositori ini berisi arsitektur lengkap untuk implementasi **Change Data Captur
 1. **Clone repository ini:**
 
 ```bash
-git clone https://github.com/namakamu/postgres-cdc-clickhouse.git
+git clone https://github.com/rynkoemi/postgres-cdc-clickhouse.git
 cd postgres-cdc-clickhouse
 ```
 
