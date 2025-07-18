@@ -125,6 +125,12 @@ curl --location --request POST 'http://localhost:8083/connectors' \
 
 1. **Buat database dan tabel utama:**
 
+Masuk ke ClickHouse:
+
+```bash
+docker exec -it clickhouse clickhouse-client
+```
+
 ```sql
 CREATE DATABASE shop;
 
